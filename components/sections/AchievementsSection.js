@@ -42,13 +42,13 @@ export default function AchievementsSection({ achievements }) {
           content: '';
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, rgba(0,174,239,0.05), transparent);
+          background: linear-gradient(135deg, var(--blue-glow), transparent);
         }
         .achievement-placeholder {
           font-family: var(--font-display);
           font-size: 32px;
           font-weight: 700;
-          color: rgba(0,174,239,0.2);
+          color: var(--blue-border);
           letter-spacing: -0.03em;
         }
         .achievement-card-body {
