@@ -1,6 +1,7 @@
 'use client';
 // components/layout/Navbar.js
 import { useState, useEffect } from 'react';
+import ThemeSwitcher from '@/components/ui/ThemeSwitcher';
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -94,6 +95,20 @@ export default function Navbar() {
           color: #000 !important;
           transform: translateY(-1px);
         }
+        .nav-right {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .nav-theme-desktop {
+          display: flex;
+        }
+        .mobile-theme-row {
+          margin-top: 8px;
+          padding-top: 16px;
+          border-top: 1px solid var(--border-subtle);
+          display: flex;
+        }
         .hamburger {
           display: none;
           background: none;
@@ -135,6 +150,7 @@ export default function Navbar() {
         }
         @media (max-width: 768px) {
           .nav-links { display: none; }
+          .nav-theme-desktop { display: none; }
           .hamburger { display: flex; }
         }
       `}</style>
@@ -156,9 +172,14 @@ export default function Navbar() {
             ))}
           </ul>
 
-          <button className="hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
-            <span /><span /><span />
-          </button>
+          <div className="nav-right">
+            <div className="nav-theme-desktop">
+              <ThemeSwitcher />
+            </div>
+            <button className="hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+              <span /><span /><span />
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -166,6 +187,9 @@ export default function Navbar() {
         {links.map((l) => (
           <a key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>{l.label}</a>
         ))}
+        <div className="mobile-theme-row">
+          <ThemeSwitcher />
+        </div>
       </div>
     </>
   );
@@ -174,17 +198,17 @@ export default function Navbar() {
 function KainosIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <line x1="8" y1="8" x2="20" y2="20" stroke="#00AEEF" strokeWidth="2"/>
-      <line x1="8" y1="32" x2="20" y2="20" stroke="#00AEEF" strokeWidth="2"/>
-      <line x1="20" y1="20" x2="32" y2="8" stroke="#0077aa" strokeWidth="2"/>
-      <line x1="20" y1="20" x2="32" y2="32" stroke="#0077aa" strokeWidth="2"/>
-      <line x1="8" y1="8" x2="32" y2="32" stroke="#00AEEF" strokeWidth="1.5" opacity="0.6"/>
-      <line x1="8" y1="32" x2="32" y2="8" stroke="#00AEEF" strokeWidth="1.5" opacity="0.6"/>
-      <circle cx="8" cy="8" r="2.5" fill="#00AEEF"/>
-      <circle cx="8" cy="32" r="2.5" fill="#00AEEF"/>
-      <circle cx="32" cy="8" r="2.5" fill="#0077aa"/>
-      <circle cx="32" cy="32" r="2.5" fill="#0077aa"/>
-      <circle cx="20" cy="20" r="3.5" fill="#00AEEF"/>
+      <line x1="8" y1="8" x2="20" y2="20" stroke="var(--blue-primary)" strokeWidth="2"/>
+      <line x1="8" y1="32" x2="20" y2="20" stroke="var(--blue-primary)" strokeWidth="2"/>
+      <line x1="20" y1="20" x2="32" y2="8" stroke="var(--blue-dim)" strokeWidth="2"/>
+      <line x1="20" y1="20" x2="32" y2="32" stroke="var(--blue-dim)" strokeWidth="2"/>
+      <line x1="8" y1="8" x2="32" y2="32" stroke="var(--blue-primary)" strokeWidth="1.5" opacity="0.6"/>
+      <line x1="8" y1="32" x2="32" y2="8" stroke="var(--blue-primary)" strokeWidth="1.5" opacity="0.6"/>
+      <circle cx="8" cy="8" r="2.5" fill="var(--blue-primary)"/>
+      <circle cx="8" cy="32" r="2.5" fill="var(--blue-primary)"/>
+      <circle cx="32" cy="8" r="2.5" fill="var(--blue-dim)"/>
+      <circle cx="32" cy="32" r="2.5" fill="var(--blue-dim)"/>
+      <circle cx="20" cy="20" r="3.5" fill="var(--blue-primary)"/>
     </svg>
   );
 }
