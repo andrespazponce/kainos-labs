@@ -26,7 +26,7 @@ export default function ProductsSection({ products }) {
         }
         .product-card.highlight {
           border-color: var(--blue-border);
-          background: linear-gradient(135deg, var(--bg-card) 0%, rgba(0,174,239,0.05) 100%);
+          background: linear-gradient(135deg, var(--bg-card) 0%, var(--blue-glow) 100%);
         }
         .product-card:hover {
           transform: translateY(-2px);
@@ -36,7 +36,7 @@ export default function ProductsSection({ products }) {
           position: absolute;
           top: -60px; right: -60px;
           width: 200px; height: 200px;
-          background: radial-gradient(circle, rgba(0,174,239,0.08), transparent 70%);
+          background: radial-gradient(circle, var(--blue-glow), transparent 70%);
           border-radius: 50%;
           pointer-events: none;
         }
