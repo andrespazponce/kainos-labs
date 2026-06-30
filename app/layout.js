@@ -1,5 +1,7 @@
 // app/layout.js
 import './globals.css';
+import { ThemeProvider } from '@/components/ui/ThemeProvider';
+import AuthProvider from '@/components/ui/AuthProvider';
 
 export const metadata = {
   title: 'KAINOS LABS — Tecnología que transforma empresas',
@@ -12,7 +14,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </AuthProvider>
+      </body>
     </html>
   );
 }
