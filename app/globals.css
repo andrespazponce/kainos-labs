@@ -27,6 +27,58 @@
 
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Inter', sans-serif;
+
+  --on-accent-text: #000;
+}
+
+/* ── Tema: MONOCROMÁTICO (blanco / negro / gris) ── */
+[data-theme="mono"] {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #121212;
+  --bg-card: #161616;
+  --bg-card-hover: #1e1e1e;
+  --bg-elevated: #232323;
+
+  --blue-primary: #f4f4f4;
+  --blue-bright: #ffffff;
+  --blue-dim: #9a9a9a;
+  --blue-glow: rgba(255, 255, 255, 0.08);
+  --blue-border: rgba(255, 255, 255, 0.18);
+
+  --text-primary: #fafafa;
+  --text-secondary: #a0a0a0;
+  --text-muted: #5c5c5c;
+
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-card: rgba(255, 255, 255, 0.1);
+
+  --on-accent-text: #0a0a0a;
+}
+
+/* ── Tema: RAZER (verde neón / negro) ── */
+[data-theme="razer"] {
+  --bg-primary: #050505;
+  --bg-secondary: #0a0a0a;
+  --bg-card: #0e0f0e;
+  --bg-card-hover: #131513;
+  --bg-elevated: #181a18;
+
+  --blue-primary: #44d62c;
+  --blue-bright: #6dff4f;
+  --blue-dim: #2a8a1c;
+  --blue-glow: rgba(68, 214, 44, 0.14);
+  --blue-border: rgba(68, 214, 44, 0.3);
+
+  --text-primary: #f2fff0;
+  --text-secondary: #8a958a;
+  --text-muted: #4d564d;
+
+  --border-subtle: rgba(68, 214, 44, 0.08);
+  --border-card: rgba(68, 214, 44, 0.15);
+
+  --font-display: 'Space Grotesk', sans-serif;
+
+  --on-accent-text: #000;
 }
 
 * {
@@ -46,6 +98,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 /* ── Scrollbar ── */
