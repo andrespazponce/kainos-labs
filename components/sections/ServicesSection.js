@@ -50,7 +50,7 @@ export default function ServicesSection({ services }) {
       <style>{`
         .services-section {
           padding: 100px 0;
-          background: linear-gradient(180deg, transparent 0%, rgba(0,174,239,0.02) 50%, transparent 100%);
+          background: linear-gradient(180deg, transparent 0%, var(--blue-glow) 50%, transparent 100%);
         }
         .services-grid {
           display: grid;
@@ -87,8 +87,8 @@ export default function ServicesSection({ services }) {
         .service-icon {
           width: 44px;
           height: 44px;
-          background: rgba(0,174,239,0.08);
-          border: 1px solid rgba(0,174,239,0.15);
+          background: var(--blue-glow);
+          border: 1px solid var(--blue-border);
           border-radius: 12px;
           display: flex;
           align-items: center;
@@ -98,8 +98,8 @@ export default function ServicesSection({ services }) {
           transition: all 0.2s ease;
         }
         .service-card:hover .service-icon {
-          background: rgba(0,174,239,0.15);
-          border-color: rgba(0,174,239,0.3);
+          background: var(--blue-border);
+          border-color: var(--blue-border);
         }
         .service-title {
           font-family: var(--font-display);
