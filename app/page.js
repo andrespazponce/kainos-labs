@@ -21,7 +21,7 @@ export default function Home() {
         <div className="line-divider" />
         <AchievementsSection achievements={siteConfig.achievements} />
         <div className="line-divider" />
-        <ClientPortal portalConfig={siteConfig.clientPortal} />
+        <ClientPortal />
       </main>
       <Footer />
     </>
