@@ -2,28 +2,37 @@
 // app/admin/layout.js
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function AdminLayout({ children }) {
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === '/admin/login';
+  const [mounted, setMounted] = useState(false);
+
+  // Evita mismatch de hidratación: el servidor nunca conoce el estado de
+  // sesión, así que esperamos a estar montados en el cliente antes de
+  // renderizar cualquier cosa que dependa de useSession().
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     if (isLoginPage) return;
     if (status === 'unauthenticated') {
       router.replace('/admin/login');
     }
-  }, [status, isLoginPage, router]);
+  }, [mounted, status, isLoginPage, router]);
 
   if (isLoginPage) {
     return children;
   }
 
-  if (status === 'loading') {
+  if (!mounted || status === 'loading') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
+      <div suppressHydrationWarning style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
         Verificando acceso...
       </div>
     );
