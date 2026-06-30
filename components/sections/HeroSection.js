@@ -21,8 +21,8 @@ export default function HeroSection({ config }) {
           position: absolute;
           inset: 0;
           background-image: 
-            linear-gradient(rgba(0,174,239,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,174,239,0.04) 1px, transparent 1px);
+            linear-gradient(var(--blue-glow) 1px, transparent 1px),
+            linear-gradient(90deg, var(--blue-glow) 1px, transparent 1px);
           background-size: 48px 48px;
           mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
         }
@@ -33,7 +33,7 @@ export default function HeroSection({ config }) {
           transform: translateX(-50%);
           width: 600px;
           height: 600px;
-          background: radial-gradient(circle, rgba(0,174,239,0.08) 0%, transparent 70%);
+          background: radial-gradient(circle, var(--blue-glow) 0%, transparent 70%);
           pointer-events: none;
         }
         .hero-inner {
@@ -111,14 +111,14 @@ export default function HeroSection({ config }) {
         .hero-k-ring {
           position: absolute;
           inset: -24px;
-          border: 1px solid rgba(0,174,239,0.12);
+          border: 1px solid var(--blue-border);
           border-radius: 50%;
           animation: spin-slow 30s linear infinite;
         }
         .hero-k-ring-2 {
           position: absolute;
           inset: -48px;
-          border: 1px solid rgba(0,174,239,0.06);
+          border: 1px solid var(--blue-glow);
           border-radius: 50%;
           animation: spin-slow 50s linear infinite reverse;
         }
@@ -232,8 +232,8 @@ function LargeKIcon() {
     <svg viewBox="0 0 320 320" width="320" height="320" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00AEEF" stopOpacity="0.9"/>
-          <stop offset="100%" stopColor="#0055aa" stopOpacity="0.6"/>
+          <stop offset="0%" stopColor="var(--blue-primary)" stopOpacity="0.9"/>
+          <stop offset="100%" stopColor="var(--blue-dim)" stopOpacity="0.6"/>
         </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
@@ -257,14 +257,14 @@ function LargeKIcon() {
 
       {nodes.map((n) => (
         <g key={n.id}>
-          <circle cx={n.cx} cy={n.cy} r="12" fill="rgba(0,174,239,0.1)" filter="url(#glow)"/>
+          <circle cx={n.cx} cy={n.cy} r="12" fill="var(--blue-glow)" filter="url(#glow)"/>
           <circle
             cx={n.cx} cy={n.cy}
             r={n.id === 'center' ? 7 : 5}
-            fill={n.id === 'center' ? '#00AEEF' : '#0077aa'}
+            fill={n.id === 'center' ? 'var(--blue-primary)' : 'var(--blue-dim)'}
             filter="url(#glow)"
           />
-          <circle cx={n.cx} cy={n.cy} r="2" fill="#00d4ff"/>
+          <circle cx={n.cx} cy={n.cy} r="2" fill="var(--blue-bright)"/>
         </g>
       ))}
     </svg>
