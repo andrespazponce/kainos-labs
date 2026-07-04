@@ -102,7 +102,7 @@ export default function ProductsSection({ products }) {
 
       <section className="products-section" id="productos">
         <div className="container">
-          <p className="section-label">Productos</p>
+          <p className="section-label">Productos!</p>
           <h2 className="section-title">Herramientas diseñadas<br />para escalar negocios</h2>
           <p className="section-sub">Dos productos core que cubren las necesidades tecnológicas más críticas de cualquier empresa moderna.</p>
 

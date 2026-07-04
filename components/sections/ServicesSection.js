@@ -47,7 +47,9 @@ const SERVICE_ICONS = {
 export default function ServicesSection({ services }) {
   return (
     <>
-      <style>{`
+      {/* dangerouslySetInnerHTML evita que React escape las comillas de content: ''
+          en el HTML del servidor, lo que causaba un error de hidratación */}
+      <style dangerouslySetInnerHTML={{ __html: `
         .services-section {
           padding: 100px 0;
           background: linear-gradient(180deg, transparent 0%, var(--blue-glow) 50%, transparent 100%);
@@ -120,7 +122,7 @@ export default function ServicesSection({ services }) {
         @media (max-width: 600px) {
           .services-grid { grid-template-columns: 1fr; }
         }
-      `}</style>
+      ` }} />
 
       <section className="services-section" id="servicios">
         <div className="container">

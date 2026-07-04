@@ -4,7 +4,9 @@
 export default function AchievementsSection({ achievements }) {
   return (
     <>
-      <style>{`
+      {/* dangerouslySetInnerHTML evita que React escape las comillas de content: ''
+          en el HTML del servidor, lo que causaba un error de hidratación */}
+      <style dangerouslySetInnerHTML={{ __html: `
         .achievements-section {
           padding: 100px 0;
         }
@@ -95,7 +97,7 @@ export default function AchievementsSection({ achievements }) {
         @media (max-width: 600px) {
           .achievements-grid { grid-template-columns: 1fr; }
         }
-      `}</style>
+      ` }} />
 
       <section className="achievements-section" id="logros">
         <div className="container">
