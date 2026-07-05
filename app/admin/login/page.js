@@ -9,10 +9,12 @@ export default function AdminLoginPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    // Solo los admins entran al panel; una sesión de cliente del portal
+    // no debe rebotar hacia /admin.
+    if (status === 'authenticated' && session?.user?.role === 'admin') {
       router.replace('/admin');
     }
-  }, [status, router]);
+  }, [status, session, router]);
 
   return (
     <>

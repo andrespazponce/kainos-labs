@@ -18,13 +18,17 @@ export default function AdminLayout({ children }) {
     setMounted(true);
   }, []);
 
+  // Los clientes del portal también tienen sesión (odoo-credentials), pero
+  // solo los admins (role === 'admin') pueden ver este panel.
+  const isAdmin = status === 'authenticated' && session?.user?.role === 'admin';
+
   useEffect(() => {
     if (!mounted) return;
     if (isLoginPage) return;
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' || (status === 'authenticated' && !isAdmin)) {
       router.replace('/admin/login');
     }
-  }, [mounted, status, isLoginPage, router]);
+  }, [mounted, status, isAdmin, isLoginPage, router]);
 
   if (isLoginPage) {
     return children;
@@ -38,7 +42,7 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  if (status !== 'authenticated') {
+  if (!isAdmin) {
     return null;
   }
 
