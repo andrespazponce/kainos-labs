@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const ThemeContext = createContext(null);
 
 export const THEMES = [
-  { id: 'default', label: 'KAINOS', dotColor: '#00AEEF' },
+  { id: 'default', label: 'SagaSoft', dotColor: '#00AEEF' },
   { id: 'mono', label: 'Mono', dotColor: '#f4f4f4' },
   { id: 'razer', label: 'Razer', dotColor: '#44d62c' },
 ];

@@ -13,3 +13,6 @@
 # misc
 .DS_Store
 *.log
+
+# claude code local config
+.claude/

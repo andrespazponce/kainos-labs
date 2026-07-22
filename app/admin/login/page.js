@@ -95,7 +95,7 @@ export default function AdminLoginPage() {
             </svg>
           </div>
           <h1 className="login-title">Panel Administrativo</h1>
-          <p className="login-sub">Acceso restringido a personal autorizado de KAINOS LABS.</p>
+          <p className="login-sub">Acceso restringido a personal autorizado de SagaSoft.</p>
 
           <button className="google-btn" onClick={() => signIn('google', { callbackUrl: '/admin' })}>
             <svg width="18" height="18" viewBox="0 0 24 24">

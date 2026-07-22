@@ -108,7 +108,7 @@ export default function AdminLayout({ children }) {
       <div className="admin-shell">
         <div className="admin-topbar">
           <div className="admin-topbar-left">
-            <span className="admin-topbar-title">KAINOS <span>ADMIN</span></span>
+            <span className="admin-topbar-title">SagaSoft <span>Admin</span></span>
           </div>
           <div className="admin-topbar-right">
             <span className="admin-user-email">{session.user.email}</span>

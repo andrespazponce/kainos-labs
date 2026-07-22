@@ -4,7 +4,7 @@ import { ThemeProvider } from '@/components/ui/ThemeProvider';
 import AuthProvider from '@/components/ui/AuthProvider';
 
 export const metadata = {
-  title: 'KAINOS LABS — Tecnología que transforma empresas',
+  title: 'SagaSoft — Tecnología que transforma empresas',
   description: 'Soluciones de inteligencia artificial, automatización y tecnología empresarial.',
 };
 

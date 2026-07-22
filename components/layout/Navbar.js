@@ -158,8 +158,8 @@ export default function Navbar() {
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="nav-inner">
           <a href="#" className="nav-logo">
-            <KainosIcon className="nav-logo-icon" />
-            <span className="nav-logo-text">KAINOS <span>LABS</span></span>
+            <BrandIcon className="nav-logo-icon" />
+            <span className="nav-logo-text">Saga<span>Soft</span></span>
           </a>
 
           <ul className="nav-links">
@@ -195,7 +195,7 @@ export default function Navbar() {
   );
 }
 
-function KainosIcon({ className }) {
+function BrandIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
       <line x1="8" y1="8" x2="20" y2="20" stroke="var(--blue-primary)" strokeWidth="2"/>
