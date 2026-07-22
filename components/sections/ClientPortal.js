@@ -327,7 +327,7 @@ export default function ClientPortal() {
                   </form>
 
                   {error && <p className="portal-error">{error}</p>}
-                  <p className="portal-hint">¿No tienes acceso? Contacta a tu gestor de proyecto en KAINOS LABS.</p>
+                  <p className="portal-hint">¿No tienes acceso? Contacta a tu gestor de proyecto en SagaSoft.</p>
                 </div>
               )
             ) : (
@@ -356,7 +356,7 @@ export default function ClientPortal() {
 
                 {projects.length === 0 ? (
                   <div className="dashboard-tasks">
-                    <p className="tasks-empty">Todavía no hay proyectos compartidos con tu cuenta. Contacta a tu gestor de proyecto en KAINOS LABS.</p>
+                    <p className="tasks-empty">Todavía no hay proyectos compartidos con tu cuenta. Contacta a tu gestor de proyecto en SagaSoft.</p>
                   </div>
                 ) : (
                   <>
@@ -419,7 +419,7 @@ export default function ClientPortal() {
                 )}
 
                 <div className="dashboard-logout">
-                  <span className="logout-note">Datos sincronizados con KAINOS LABS</span>
+                  <span className="logout-note">Datos sincronizados con SagaSoft</span>
                   <button className="logout-btn" onClick={handleLogout}>
                     Cerrar sesión
                   </button>

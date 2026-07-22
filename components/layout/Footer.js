@@ -49,8 +49,8 @@ export default function Footer() {
 
       <footer className="footer">
         <div className="footer-inner">
-          <span className="footer-brand">KAINOS <span>LABS</span></span>
-          <span className="footer-copy">© {new Date().getFullYear()} KAINOS LABS. Todos los derechos reservados.</span>
+          <span className="footer-brand">Saga<span>Soft</span></span>
+          <span className="footer-copy">© {new Date().getFullYear()} SagaSoft. Todos los derechos reservados.</span>
           <div className="footer-links">
             <a href="#productos">Productos</a>
             <a href="#servicios">Servicios</a>
