@@ -1,54 +1,55 @@
-// app/api/portal/route.js
-// Endpoint autenticado que el portal de clientes llama para obtener el estado
-// de sus proyectos, leyendo DIRECTAMENTE de Odoo con la sesión del propio
-// usuario portal. Odoo aplica sus reglas de acceso (ir.rules), por lo que es
-// imposible que este endpoint devuelva proyectos de otro cliente.
+// app/api/portal/[id]/route.js
+// Detalle de UN proyecto para el portal de clientes. Igual que /api/portal
+// pero scoped a un solo proyecto: lo lee con la sesión del propio usuario
+// portal, así las ir.rules de Odoo garantizan que solo devuelve el proyecto
+// si le fue compartido (si no, 404). Este lookup es además el gate de acceso
+// que reutiliza el POST de mensajes.
 
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { odooCallKw, OdooSessionExpiredError, OdooConnectionError } from '@/lib/odoo';
 import { buildTaskTree, computeProgress } from '@/lib/portalProjects';
 
-export async function GET(request) {
+export async function GET(request, { params }) {
   const token = await getToken({ req: request });
   if (!token || token.role !== 'client' || !token.odooSessionId) {
     return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
   }
 
+  const projectId = Number(params.id);
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 });
+  }
+
   try {
-    // Dominio vacío a propósito: las ir.rules del usuario portal filtran solas.
+    // Domain acotado al id: las ir.rules del usuario portal devuelven vacío
+    // si el proyecto no le fue compartido → 404 (no filtramos nosotros).
     const projects = await odooCallKw(token.odooSessionId, 'project.project', 'search_read', [], {
-      domain: [],
+      domain: [['id', '=', projectId]],
       fields: ['id', 'name'],
-      order: 'id asc',
+      limit: 1,
     });
 
     if (!projects || projects.length === 0) {
-      return NextResponse.json({ company: token.company || token.name, projects: [] });
+      return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 });
     }
+    const p = projects[0];
 
-    const projectIds = projects.map((p) => p.id);
     const rawTasks = await odooCallKw(token.odooSessionId, 'project.task', 'search_read', [], {
       domain: [
-        ['project_id', 'in', projectIds],
+        ['project_id', '=', projectId],
         ['state', '!=', '1_canceled'],
       ],
       fields: ['id', 'name', 'state', 'parent_id', 'project_id', 'date_deadline'],
       order: 'sequence asc, id asc',
     });
 
-    const result = projects.map((p) => {
-      const projectTasks = (rawTasks || []).filter(
-        (t) => t.project_id && t.project_id[0] === p.id
-      );
-      const tasks = buildTaskTree(projectTasks);
-      const progress = computeProgress(tasks);
-      return { id: p.id, name: p.name, progress, tasks };
-    });
+    const tasks = buildTaskTree(rawTasks || []);
+    const progress = computeProgress(tasks);
 
     return NextResponse.json({
       company: token.company || token.name,
-      projects: result,
+      project: { id: p.id, name: p.name, progress, tasks },
     });
   } catch (err) {
     if (err instanceof OdooSessionExpiredError) {
@@ -57,7 +58,7 @@ export async function GET(request) {
     if (err instanceof OdooConnectionError) {
       return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 502 });
     }
-    console.error('Portal API error:', err);
+    console.error('Portal project detail API error:', err);
     return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
   }
 }
