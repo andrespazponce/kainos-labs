@@ -54,7 +54,7 @@ export default function Footer() {
           <div className="footer-links">
             <a href="#productos">Productos</a>
             <a href="#servicios">Servicios</a>
-            <a href="#portal">Portal</a>
+            <a href="/portal">Portal</a>
           </div>
         </div>
       </footer>

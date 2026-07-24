@@ -1,10 +1,12 @@
 'use client';
-// components/sections/ClientPortal.js
-// El cliente se loguea con su email+contraseña de Odoo (usuario portal).
-// Los datos de proyectos/tareas vienen de /api/portal, que consulta Odoo
-// con la sesión del propio usuario — cada cliente solo ve lo suyo.
+// app/portal/page.js
+// Dashboard del portal de clientes. app/portal/layout.js ya garantiza que
+// solo se llega acá con sesión de cliente autenticada (role === 'client').
+// Los datos vienen de /api/portal, que consulta Odoo con la sesión del
+// propio usuario — cada cliente solo ve sus proyectos (ir.rules de Odoo).
 import { useState, useEffect } from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 const STATUS_CONFIG = {
   done: { label: 'Completado', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', dot: '#22c55e' },
@@ -12,39 +14,16 @@ const STATUS_CONFIG = {
   pending: { label: 'Pendiente', color: '#555d6e', bg: 'rgba(85,93,110,0.1)', dot: '#555d6e' },
 };
 
-export default function ClientPortal() {
-  const { data: session, status } = useSession();
-  const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function PortalDashboardPage() {
+  const router = useRouter();
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [portalData, setPortalData] = useState(null);
-  const [loadingData, setLoadingData] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [progressAnim, setProgressAnim] = useState(0);
   const [expandedTasks, setExpandedTasks] = useState({});
 
-  // Evita mismatch de hidratación: el servidor no conoce el estado de sesión.
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const isClient = mounted && status === 'authenticated' && session?.user?.role === 'client';
-
-  const resetAll = () => {
-    setPortalData(null);
-    setSelectedProjectId(null);
-    setProgressAnim(0);
-    setExpandedTasks({});
-    setPassword('');
-  };
-
-  // Carga los proyectos cuando aparece la sesión de cliente. Importante:
-  // la única dependencia es isClient — si loadingData/portalData estuvieran
-  // acá, el propio setLoadingData cancelaría el fetch en curso.
-  useEffect(() => {
-    if (!isClient) return;
     let cancelled = false;
 
     const fetchPortal = async () => {
@@ -53,9 +32,8 @@ export default function ClientPortal() {
         const res = await fetch('/api/portal');
         if (res.status === 401) {
           // Sesión de Odoo expirada o token inválido → volver al login.
-          resetAll();
-          setError('Tu sesión expiró. Ingresá de nuevo.');
           await signOut({ redirect: false });
+          router.push('/portal/login?expired=1');
           return;
         }
         if (!res.ok) {
@@ -71,39 +49,17 @@ export default function ClientPortal() {
       } catch {
         if (!cancelled) setError('Error de conexión. Intenta de nuevo en un momento.');
       } finally {
-        setLoadingData(false);
+        if (!cancelled) setLoadingData(false);
       }
     };
 
     fetchPortal();
     return () => { cancelled = true; };
-  }, [isClient]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const res = await signIn('odoo-credentials', { redirect: false, email, password });
-      if (res?.error === 'CredentialsSignin') {
-        setError('Email o contraseña incorrectos.');
-      } else if (res?.error === 'ODOO_CONNECTION') {
-        setError('No pudimos conectar con el sistema. Intenta más tarde.');
-      } else if (res?.error) {
-        setError('Error inesperado. Intenta de nuevo.');
-      }
-      // Si fue exitoso, useSession pasa a authenticated y el useEffect carga los datos.
-    } catch {
-      setError('Error de conexión. Intenta de nuevo en un momento.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [router]);
 
   const handleLogout = async () => {
     await signOut({ redirect: false });
-    resetAll();
-    setError('');
+    router.push('/portal/login');
   };
 
   const selectProject = (id) => {
@@ -125,66 +81,12 @@ export default function ClientPortal() {
   const tasksDone = tasks.filter((t) => t.status === 'done').length;
   const tasksTotal = tasks.length;
 
-  const showDashboard = isClient && portalData;
-
   return (
     <>
       <style>{`
-        .portal-section {
-          padding: 100px 0;
-          background: linear-gradient(180deg, transparent 0%, var(--blue-glow) 50%, transparent 100%);
-        }
-        .portal-box { max-width: 760px; margin: 56px auto 0; }
-        .portal-login {
-          background: var(--bg-card);
-          border: 1px solid var(--border-card);
-          border-radius: var(--radius-lg);
-          padding: 56px;
-          text-align: center;
-        }
-        .portal-lock-icon {
-          width: 56px; height: 56px;
-          background: var(--blue-glow);
-          border: 1px solid var(--blue-border);
-          border-radius: 16px;
-          display: flex; align-items: center; justify-content: center;
-          color: var(--blue-primary);
-          margin: 0 auto 24px;
-        }
-        .portal-login-title {
-          font-family: var(--font-display);
-          font-size: 24px; font-weight: 700;
-          color: var(--text-primary);
-          margin-bottom: 8px;
-        }
-        .portal-login-sub {
-          font-size: 14px; color: var(--text-secondary);
-          margin-bottom: 36px; line-height: 1.6;
-        }
-        .portal-form { display: flex; flex-direction: column; gap: 12px; max-width: 420px; margin: 0 auto; }
-        .portal-input {
-          padding: 14px 18px;
-          background: var(--bg-elevated);
-          border: 1px solid var(--border-card);
-          border-radius: 10px;
-          color: var(--text-primary);
-          font-size: 14px;
-          outline: none; transition: border-color 0.2s;
-        }
-        .portal-input::placeholder { color: var(--text-muted); font-size: 13px; }
-        .portal-input:focus { border-color: var(--blue-primary); }
-        .portal-input.error { border-color: #ef4444; }
-        .portal-btn {
-          padding: 14px 24px; background: var(--blue-primary); color: #000;
-          border: none; border-radius: 10px;
-          font-family: var(--font-display); font-size: 14px; font-weight: 700;
-          cursor: pointer; transition: all 0.2s; white-space: nowrap;
-        }
-        .portal-btn:hover:not(:disabled) { background: var(--blue-bright); transform: translateY(-1px); }
-        .portal-btn:disabled { opacity: 0.6; cursor: default; }
-        .portal-error { margin-top: 16px; font-size: 13px; color: #ef4444; }
-        .portal-hint { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
-        .portal-loading {
+        .portal-page { padding: 100px 0; }
+        .portal-box { max-width: 760px; margin: 0 auto; }
+        .portal-loading, .portal-error-card {
           background: var(--bg-card);
           border: 1px solid var(--border-card);
           border-radius: var(--radius-lg);
@@ -273,63 +175,18 @@ export default function ClientPortal() {
         }
         .logout-btn:hover { border-color: var(--blue-border); color: var(--text-primary); }
         @media (max-width: 600px) {
-          .portal-login { padding: 32px 24px; }
           .dashboard-header, .dashboard-progress-section, .dashboard-tasks, .dashboard-logout { padding-left: 20px; padding-right: 20px; }
           .project-pills { padding-left: 20px; padding-right: 20px; }
         }
       `}</style>
 
-      <section className="portal-section" id="portal">
+      <section className="portal-page">
         <div className="container">
-          <p className="section-label">Portal de Clientes</p>
-          <h2 className="section-title">Seguimiento en tiempo real<br />de tu proyecto</h2>
-          <p className="section-sub">Ingresa con tu cuenta de cliente para ver el avance de tus proyectos y el estado de cada tarea.</p>
-
           <div className="portal-box">
-            {!showDashboard ? (
-              isClient && loadingData ? (
-                <div className="portal-loading">Cargando tus proyectos...</div>
-              ) : (
-                <div className="portal-login">
-                  <div className="portal-lock-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  </div>
-                  <h3 className="portal-login-title">Acceso exclusivo</h3>
-                  <p className="portal-login-sub">
-                    Ingresa con el email y la contraseña de tu cuenta de cliente<br />para ver el estado de tus proyectos.
-                  </p>
-
-                  <form className="portal-form" onSubmit={handleLogin}>
-                    <input
-                      type="email"
-                      className={`portal-input ${error ? 'error' : ''}`}
-                      placeholder="tu@empresa.com"
-                      value={email}
-                      autoComplete="email"
-                      onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                      required
-                    />
-                    <input
-                      type="password"
-                      className={`portal-input ${error ? 'error' : ''}`}
-                      placeholder="Contraseña"
-                      value={password}
-                      autoComplete="current-password"
-                      onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                      required
-                    />
-                    <button type="submit" className="portal-btn" disabled={loading || !email || !password}>
-                      {loading ? 'Verificando...' : 'Ingresar'}
-                    </button>
-                  </form>
-
-                  {error && <p className="portal-error">{error}</p>}
-                  <p className="portal-hint">¿No tienes acceso? Contacta a tu gestor de proyecto en SagaSoft.</p>
-                </div>
-              )
+            {loadingData ? (
+              <div className="portal-loading">Cargando tus proyectos...</div>
+            ) : error ? (
+              <div className="portal-error-card">{error}</div>
             ) : (
               <div className="portal-dashboard">
                 {projects.length > 1 && (
