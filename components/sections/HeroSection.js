@@ -175,7 +175,7 @@ export default function HeroSection({ config }) {
 
             <div className="hero-actions">
               <a href="#servicios" className="btn-primary">Ver servicios</a>
-              <a href="#portal" className="btn-ghost">Portal clientes →</a>
+              <a href="/portal" className="btn-ghost">Portal clientes →</a>
             </div>
 
             <div className="hero-stats">

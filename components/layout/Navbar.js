@@ -1,11 +1,15 @@
 'use client';
 // components/layout/Navbar.js
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import ThemeSwitcher from '@/components/ui/ThemeSwitcher';
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: session, status } = useSession();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -13,11 +17,34 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // El Navbar detecta la sesión de cliente por sí mismo (en vez de recibir
+  // un prop `user`) para que se vea igual sin importar en qué página esté
+  // montado — landing, /portal o /portal/login. Antes cada página tenía que
+  // acordarse de pasarle la sesión, y la landing nunca lo hacía: por eso al
+  // volver de /portal a "/" el navbar mostraba el estado deslogueado aunque
+  // la sesión seguía activa.
+  // `mounted` evita mismatch de hidratación (el servidor no conoce el
+  // estado de sesión).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const clientUser = mounted && status === 'authenticated' && session?.user?.role === 'client'
+    ? session.user
+    : null;
+
+  // Los anclas de sección van con "/" adelante porque este Navbar se
+  // renderiza también en /portal/*: un href="#productos" ahí navegaría a
+  // "/portal#productos" (sin esa sección) en vez de volver a la landing.
+  // Con "/#productos", desde la landing sigue siendo scroll in-page (mismo
+  // path, solo cambia el hash) y desde el portal navega a la landing y
+  // hace scroll a la sección.
+  // El link de portal cambia de texto según haya sesión de cliente o no
+  // (mismo destino /portal siempre); el resto del menú no cambia.
   const links = [
-    { label: 'Productos', href: '#productos' },
-    { label: 'Servicios', href: '#servicios' },
-    { label: 'Logros', href: '#logros' },
-    { label: 'Portal Clientes', href: '#portal' },
+    { key: 'productos', label: 'Productos', href: '/#productos' },
+    { key: 'servicios', label: 'Servicios', href: '/#servicios' },
+    { key: 'logros', label: 'Logros', href: '/#logros' },
+    { key: 'portal', label: clientUser ? 'Proyectos' : 'Portal Clientes', href: '/portal' },
   ];
 
   return (
@@ -100,6 +127,65 @@ export default function Navbar() {
           align-items: center;
           gap: 16px;
         }
+        .nav-user-menu {
+          position: relative;
+        }
+        .nav-user-trigger {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+          color: var(--text-secondary);
+          padding: 6px 4px;
+          white-space: nowrap;
+          transition: color 0.2s;
+        }
+        .nav-user-trigger:hover {
+          color: var(--text-primary);
+        }
+        .nav-user-chevron {
+          flex-shrink: 0;
+          transition: transform 0.2s;
+        }
+        .nav-user-chevron.open {
+          transform: rotate(180deg);
+        }
+        .nav-user-dropdown {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          min-width: 170px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-card);
+          border-radius: 10px;
+          padding: 6px;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+          z-index: 200;
+        }
+        .nav-user-dropdown-item {
+          text-align: left;
+          padding: 9px 10px;
+          background: transparent;
+          border: none;
+          border-radius: 6px;
+          color: var(--text-secondary);
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .nav-user-dropdown-item:hover {
+          background: var(--bg-elevated);
+          color: var(--text-primary);
+        }
+        @media (max-width: 768px) {
+          .nav-user-menu { display: none; }
+        }
         .nav-theme-desktop {
           display: flex;
         }
@@ -157,15 +243,15 @@ export default function Navbar() {
 
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="nav-inner">
-          <a href="#" className="nav-logo">
+          <a href="/" className="nav-logo">
             <BrandIcon className="nav-logo-icon" />
             <span className="nav-logo-text">Saga<span>Soft</span></span>
           </a>
 
           <ul className="nav-links">
             {links.map((l) => (
-              <li key={l.href}>
-                <a href={l.href} className={l.label === 'Portal Clientes' ? 'nav-cta' : ''}>
+              <li key={l.key}>
+                <a href={l.href} className={l.key === 'portal' ? 'nav-cta' : ''}>
                   {l.label}
                 </a>
               </li>
@@ -173,6 +259,7 @@ export default function Navbar() {
           </ul>
 
           <div className="nav-right">
+            {clientUser && <UserMenu user={clientUser} />}
             <div className="nav-theme-desktop">
               <ThemeSwitcher />
             </div>
@@ -185,13 +272,60 @@ export default function Navbar() {
 
       <div className={`mobile-menu ${menuOpen ? 'open' : ''}`}>
         {links.map((l) => (
-          <a key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>{l.label}</a>
+          <a key={l.key} href={l.href} onClick={() => setMenuOpen(false)}>{l.label}</a>
         ))}
         <div className="mobile-theme-row">
           <ThemeSwitcher />
         </div>
       </div>
     </>
+  );
+}
+
+// Dropdown de usuario: mismo signOut que ya usa el dashboard de /portal
+// (redirect:false + push manual a /portal/login).
+function UserMenu({ user }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  const handleLogout = async () => {
+    setOpen(false);
+    await signOut({ redirect: false });
+    router.push('/portal/login');
+  };
+
+  return (
+    <div className="nav-user-menu" ref={ref}>
+      <button
+        className="nav-user-trigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
+        <span>{user.name || user.email}</span>
+        <svg
+          className={`nav-user-chevron ${open ? 'open' : ''}`}
+          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="nav-user-dropdown">
+          <button className="nav-user-dropdown-item" onClick={handleLogout}>Cerrar sesión</button>
+        </div>
+      )}
+    </div>
   );
 }
 
