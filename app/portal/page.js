@@ -1,41 +1,66 @@
 'use client';
-// app/portal/page.js
-// Vista del cliente agrupada por milestones/objetivos de ODOO.
+// app/portal/page.js — v2
+// Objetivos horizontales, progreso ponderado, encargados, subtareas expandibles.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 const STATUS_CFG = {
-  done:          { label: 'Completado',  color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  dot: '#22c55e' },
-  'in-progress': { label: 'En progreso', color: 'var(--blue-primary)', bg: 'var(--blue-glow)', dot: 'var(--blue-primary)' },
-  pending:       { label: 'Pendiente',   color: '#555d6e', bg: 'rgba(85,93,110,0.1)', dot: '#555d6e' },
+  done:          { label: 'Completado',  dot: '#22c55e',           chip: { color: '#22c55e',           bg: 'rgba(34,197,94,0.12)'  } },
+  'in-progress': { label: 'En progreso', dot: 'var(--blue-primary)', chip: { color: 'var(--blue-primary)', bg: 'var(--blue-glow)'       } },
+  pending:       { label: 'Pendiente',   dot: '#555d6e',           chip: { color: '#555d6e',           bg: 'rgba(85,93,110,0.1)'   } },
 };
 
 function fmtDate(iso) {
   if (!iso) return null;
-  const d = new Date(iso);
-  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function ProgressRing({ pct, size = 48, stroke = 4 }) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
+function Avatar({ name }) {
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const hue = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
   return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--bg-elevated)" strokeWidth={stroke}/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none"
-        stroke="var(--blue-primary)" strokeWidth={stroke}
-        strokeDasharray={circ} strokeDashoffset={offset}
-        strokeLinecap="round"
-        style={{ transition: 'stroke-dashoffset 1s ease' }}
-      />
-      <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central"
-        style={{ fill: 'var(--text-primary)', fontSize: size * 0.26, fontWeight: 700, fontFamily: 'var(--font-display)', transform: 'rotate(90deg)', transformOrigin: `${size/2}px ${size/2}px` }}>
-        {pct}%
-      </text>
-    </svg>
+    <span title={name} style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 22, height: 22, borderRadius: '50%',
+      background: `hsl(${hue},55%,35%)`,
+      color: '#fff', fontSize: 9, fontWeight: 700,
+      border: '1.5px solid var(--bg-card)', flexShrink: 0,
+    }}>
+      {initials}
+    </span>
+  );
+}
+
+// Barra de progreso compuesta: done (sólido) + in-progress (semitransparente)
+function ComboBar({ pct, inProgressPct, height = 6 }) {
+  return (
+    <div style={{
+      position: 'relative', height, borderRadius: 100,
+      background: 'var(--bg-elevated)', overflow: 'hidden',
+    }}>
+      {/* Bloque in-progress (debajo, semitransparente) */}
+      {inProgressPct > 0 && (
+        <div style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: `${Math.min(pct + inProgressPct, 100)}%`,
+          background: 'var(--blue-primary)',
+          opacity: 0.25,
+          borderRadius: 100,
+          transition: 'width 1s ease',
+        }} />
+      )}
+      {/* Bloque done (encima, sólido) */}
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0,
+        width: `${pct}%`,
+        background: 'linear-gradient(90deg, var(--blue-dim), var(--blue-primary))',
+        borderRadius: 100,
+        transition: 'width 1s ease',
+        boxShadow: pct > 0 ? '0 0 8px rgba(0,174,239,0.4)' : 'none',
+      }} />
+    </div>
   );
 }
 
@@ -45,9 +70,9 @@ export default function PortalPage() {
   const [mounted, setMounted] = useState(false);
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
+  const [activeMilestone, setActiveMilestone] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [openMilestones, setOpenMilestones] = useState({});
   const [openTasks, setOpenTasks] = useState({});
 
   useEffect(() => { setMounted(true); }, []);
@@ -68,10 +93,7 @@ export default function PortalPage() {
         setProjects(list);
         if (list.length > 0) {
           setActiveProject(list[0]);
-          // Abrir todos los milestones por defecto
-          const open = {};
-          (list[0].milestones || []).forEach(m => { open[m.id] = true; });
-          setOpenMilestones(open);
+          setActiveMilestone(list[0].milestones?.[0] || null);
         }
       })
       .catch(() => setError('Error de conexión con el servidor.'))
@@ -80,18 +102,19 @@ export default function PortalPage() {
 
   const selectProject = (p) => {
     setActiveProject(p);
+    setActiveMilestone(p.milestones?.[0] || null);
     setOpenTasks({});
-    const open = {};
-    (p.milestones || []).forEach(m => { open[m.id] = true; });
-    setOpenMilestones(open);
   };
 
-  const toggleMilestone = (id) => setOpenMilestones(prev => ({ ...prev, [id]: !prev[id] }));
   const toggleTask = (id) => setOpenTasks(prev => ({ ...prev, [id]: !prev[id] }));
 
   if (!mounted || status === 'loading') {
     return (
-      <div suppressHydrationWarning style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-primary)', color:'var(--text-muted)', fontSize:'14px' }}>
+      <div suppressHydrationWarning style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: 'var(--bg-primary)',
+        color: 'var(--text-muted)', fontSize: 14,
+      }}>
         Cargando portal...
       </div>
     );
@@ -99,6 +122,7 @@ export default function PortalPage() {
   if (status !== 'authenticated') return null;
 
   const ms = activeProject?.milestones || [];
+  const tasks = activeMilestone?.tasks || [];
 
   return (
     <>
@@ -111,8 +135,7 @@ export default function PortalPage() {
           position:sticky; top:0; z-index:50;
           display:flex; align-items:center; justify-content:space-between;
           padding:14px 32px;
-          background:rgba(15,16,20,0.9);
-          backdrop-filter:blur(16px);
+          background:rgba(15,16,20,0.92); backdrop-filter:blur(16px);
           border-bottom:1px solid var(--border-subtle);
         }
         .pp-brand { font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text-primary); text-decoration:none; }
@@ -123,106 +146,104 @@ export default function PortalPage() {
         .pp-logout:hover { border-color:var(--blue-border); color:var(--text-primary); }
 
         /* ── Body ── */
-        .pp-body { flex:1; max-width:900px; margin:0 auto; width:100%; padding:40px 24px 80px; }
+        .pp-body { flex:1; max-width:960px; margin:0 auto; width:100%; padding:36px 24px 80px; }
 
-        /* ── Project selector ── */
-        .pp-proj-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:32px; }
-        .pp-proj-tab {
-          padding:8px 18px;
-          background:var(--bg-card); border:1px solid var(--border-card);
-          border-radius:100px; font-size:13px; font-weight:500;
-          color:var(--text-secondary); cursor:pointer; transition:all 0.2s;
-        }
+        /* ── Selector de proyecto ── */
+        .pp-proj-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px; }
+        .pp-proj-tab { padding:7px 16px; background:var(--bg-card); border:1px solid var(--border-card); border-radius:100px; font-size:13px; font-weight:500; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
         .pp-proj-tab:hover { border-color:var(--blue-border); color:var(--text-primary); }
         .pp-proj-tab.active { background:var(--blue-glow); border-color:var(--blue-primary); color:var(--blue-primary); font-weight:600; }
 
-        /* ── Project header ── */
-        .pp-proj-header {
-          display:flex; align-items:flex-start; justify-content:space-between;
-          gap:24px; flex-wrap:wrap;
-          background:var(--bg-card); border:1px solid var(--border-card);
-          border-radius:var(--radius-card); padding:28px; margin-bottom:24px;
-        }
-        .pp-proj-name { font-family:var(--font-display); font-size:20px; font-weight:700; color:var(--text-primary); margin-bottom:6px; line-height:1.3; }
-        .pp-proj-meta { font-size:13px; color:var(--text-muted); }
-        .pp-proj-meta span { color:var(--blue-primary); font-weight:600; }
-
-        /* ── Overall progress bar ── */
-        .pp-overall-bar { margin-top:16px; }
-        .pp-bar-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+        /* ── Cabecera del proyecto ── */
+        .pp-proj-header { background:var(--bg-card); border:1px solid var(--border-card); border-radius:var(--radius-card); padding:24px 28px; margin-bottom:28px; }
+        .pp-proj-name { font-family:var(--font-display); font-size:19px; font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+        .pp-proj-meta { font-size:12px; color:var(--text-muted); margin-bottom:14px; }
+        .pp-proj-meta b { color:var(--blue-primary); }
+        .pp-bar-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
         .pp-bar-label { font-size:12px; color:var(--text-secondary); }
-        .pp-bar-pct { font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--blue-primary); line-height:1; }
-        .pp-bar-track { height:6px; background:var(--bg-elevated); border-radius:100px; overflow:hidden; }
-        .pp-bar-fill { height:100%; background:linear-gradient(90deg,var(--blue-dim),var(--blue-primary)); border-radius:100px; transition:width 1s ease; }
+        .pp-bar-pct { font-family:var(--font-display); font-size:20px; font-weight:700; color:var(--blue-primary); line-height:1; }
+        .pp-bar-legend { display:flex; gap:16px; margin-top:8px; }
+        .pp-bar-legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted); }
+        .pp-legend-dot { width:8px; height:8px; border-radius:50%; }
 
-        /* ── Milestones section ── */
-        .pp-ms-title { font-family:var(--font-display); font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:16px; }
+        /* ── Sección de objetivos ── */
+        .pp-ms-section { margin-bottom:28px; }
+        .pp-ms-section-title { font-family:var(--font-display); font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:14px; }
 
-        /* ── Milestone card ── */
-        .pp-ms {
+        /* ── Carrusel horizontal de milestones ── */
+        .pp-ms-scroll {
+          display:flex; gap:12px; overflow-x:auto; padding-bottom:8px;
+          scrollbar-width:thin; scrollbar-color:var(--blue-dim) transparent;
+        }
+        .pp-ms-scroll::-webkit-scrollbar { height:3px; }
+        .pp-ms-scroll::-webkit-scrollbar-track { background:transparent; }
+        .pp-ms-scroll::-webkit-scrollbar-thumb { background:var(--blue-dim); border-radius:100px; }
+
+        /* ── Tarjeta de milestone ── */
+        .pp-ms-card {
+          flex-shrink:0; width:220px;
           background:var(--bg-card); border:1px solid var(--border-card);
-          border-radius:var(--radius-card); margin-bottom:12px;
-          overflow:hidden; transition:border-color 0.2s;
+          border-radius:14px; padding:18px 18px 16px;
+          cursor:pointer; transition:all 0.2s;
+          display:flex; flex-direction:column; gap:10px;
         }
-        .pp-ms:hover { border-color:var(--blue-border); }
-        .pp-ms-header {
-          display:flex; align-items:center; gap:16px;
-          padding:20px 24px; cursor:pointer;
-          transition:background 0.15s;
-        }
-        .pp-ms-header:hover { background:var(--bg-card-hover); }
-        .pp-ms-info { flex:1; min-width:0; }
-        .pp-ms-name { font-family:var(--font-display); font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:4px; }
-        .pp-ms-count { font-size:12px; color:var(--text-muted); }
-        .pp-ms-count b { color:var(--blue-primary); }
-        .pp-ms-chevron { color:var(--text-muted); transition:transform 0.25s; flex-shrink:0; }
-        .pp-ms-chevron.open { transform:rotate(90deg); }
+        .pp-ms-card:hover { border-color:var(--blue-border); transform:translateY(-2px); }
+        .pp-ms-card.active { border-color:var(--blue-primary); background:linear-gradient(135deg,var(--bg-card),rgba(0,174,239,0.05)); }
+        .pp-ms-card-name { font-family:var(--font-display); font-size:13px; font-weight:600; color:var(--text-primary); line-height:1.35; }
+        .pp-ms-card-count { font-size:11px; color:var(--text-muted); }
+        .pp-ms-card-count b { color:var(--blue-primary); }
+        .pp-ms-pct-row { display:flex; justify-content:space-between; align-items:center; }
+        .pp-ms-pct-num { font-family:var(--font-display); font-size:18px; font-weight:700; color:var(--blue-primary); line-height:1; }
+        .pp-ms-pct-sub { font-size:10px; color:var(--text-muted); }
 
-        /* ── Task list inside milestone ── */
-        .pp-task-list { border-top:1px solid var(--border-subtle); }
-        .pp-task {
-          border-bottom:1px solid rgba(255,255,255,0.03);
-        }
-        .pp-task:last-child { border-bottom:none; }
+        /* ── Lista de tareas ── */
+        .pp-task-section-title { font-family:var(--font-display); font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:12px; }
+        .pp-task-list { display:flex; flex-direction:column; gap:8px; }
+        .pp-task-card { background:var(--bg-card); border:1px solid var(--border-card); border-radius:12px; overflow:hidden; transition:border-color 0.2s; }
+        .pp-task-card:hover { border-color:var(--blue-border); }
+
+        /* ── Fila principal de tarea ── */
         .pp-task-row {
-          display:flex; align-items:center; gap:12px;
-          padding:14px 24px; cursor:pointer;
-          transition:background 0.15s;
+          display:flex; align-items:flex-start; gap:12px;
+          padding:14px 18px; cursor:pointer;
         }
-        .pp-task-row:hover { background:var(--bg-card-hover); }
-        .pp-task-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-        .pp-task-text { flex:1; font-size:14px; color:var(--text-primary); line-height:1.4; }
-        .pp-task-text.done { color:var(--text-muted); text-decoration:line-through; text-decoration-color:var(--text-muted); }
-        .pp-task-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
-        .pp-task-chip { padding:3px 10px; border-radius:100px; font-size:11px; font-weight:600; }
-        .pp-task-date { font-size:11px; color:var(--text-muted); white-space:nowrap; }
-        .pp-task-chevron { color:var(--text-muted); transition:transform 0.2s; flex-shrink:0; }
+        .pp-task-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+        .pp-task-body { flex:1; min-width:0; }
+        .pp-task-title { font-size:14px; color:var(--text-primary); line-height:1.4; margin-bottom:6px; }
+        .pp-task-title.done { color:var(--text-muted); text-decoration:line-through; }
+        .pp-task-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .pp-task-chip { padding:2px 9px; border-radius:100px; font-size:11px; font-weight:600; }
+        .pp-task-date { font-size:11px; color:var(--text-muted); }
+        .pp-task-assignees { display:flex; align-items:center; gap:3px; }
+        .pp-task-assignee-name { font-size:11px; color:var(--text-muted); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .pp-task-chevron { color:var(--text-muted); transition:transform 0.2s; flex-shrink:0; margin-top:2px; }
         .pp-task-chevron.open { transform:rotate(90deg); }
 
-        /* ── Subtasks ── */
-        .pp-subtasks { padding:0 24px 12px 52px; display:flex; flex-direction:column; gap:6px; }
-        .pp-sub { display:flex; align-items:center; gap:8px; }
-        .pp-sub-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-        .pp-sub-text { font-size:13px; color:var(--text-secondary); }
-        .pp-sub-text.done { color:var(--text-muted); text-decoration:line-through; }
+        /* ── Subtareas ── */
+        .pp-subtasks { border-top:1px solid var(--border-subtle); padding:10px 18px 14px 38px; display:flex; flex-direction:column; gap:8px; }
+        .pp-subtask-row { display:flex; align-items:flex-start; gap:8px; }
+        .pp-sub-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+        .pp-sub-body { flex:1; min-width:0; }
+        .pp-sub-title { font-size:13px; color:var(--text-secondary); line-height:1.4; margin-bottom:3px; }
+        .pp-sub-title.done { color:var(--text-muted); text-decoration:line-through; }
+        .pp-sub-meta { display:flex; align-items:center; gap:8px; }
 
-        /* ── Empty / loading / error ── */
+        /* ── Empty / error ── */
         .pp-empty { text-align:center; padding:60px 0; color:var(--text-muted); font-size:13px; }
         .pp-error { text-align:center; padding:40px 0; color:#ef4444; font-size:13px; }
 
         @media (max-width:600px) {
           .pp-top { padding:12px 16px; }
-          .pp-body { padding:24px 16px 60px; }
-          .pp-proj-header { padding:20px; }
-          .pp-ms-header { padding:16px 18px; }
-          .pp-task-row { padding:12px 18px; }
-          .pp-task-date { display:none; }
-          .pp-subtasks { padding-left:36px; }
+          .pp-body { padding:20px 14px 60px; }
+          .pp-proj-header { padding:18px; }
+          .pp-ms-card { width:180px; }
+          .pp-task-row { padding:12px 14px; }
+          .pp-subtasks { padding-left:28px; }
         }
       `}</style>
 
       <div className="pp">
-        {/* Topbar */}
+        {/* ── Topbar ── */}
         <div className="pp-top">
           <a href="/" className="pp-brand">Saga<span>Soft</span></a>
           <div className="pp-top-right">
@@ -234,17 +255,17 @@ export default function PortalPage() {
         </div>
 
         <div className="pp-body">
-          {loading && <div className="pp-empty">Cargando proyectos desde ODOO...</div>}
-          {error && <div className="pp-error">Error: {error}</div>}
+          {loading && <div className="pp-empty">Cargando desde ODOO...</div>}
+          {error   && <div className="pp-error">Error: {error}</div>}
 
-          {!loading && !error && (
+          {!loading && !error && activeProject && (
             <>
-              {/* Selector de proyecto si hay más de uno */}
+              {/* Selector de proyecto */}
               {projects.length > 1 && (
                 <div className="pp-proj-tabs">
                   {projects.map(p => (
                     <button key={p.id}
-                      className={`pp-proj-tab ${activeProject?.id === p.id ? 'active' : ''}`}
+                      className={`pp-proj-tab ${activeProject.id === p.id ? 'active' : ''}`}
                       onClick={() => selectProject(p)}>
                       {p.name}
                     </button>
@@ -252,100 +273,137 @@ export default function PortalPage() {
                 </div>
               )}
 
-              {activeProject && (
-                <>
-                  {/* Header del proyecto */}
-                  <div className="pp-proj-header">
-                    <div style={{ flex: 1 }}>
-                      <div className="pp-proj-name">{activeProject.name}</div>
-                      <div className="pp-proj-meta">
-                        {ms.length} objetivo{ms.length !== 1 ? 's' : ''} · {activeProject.tasks?.length || 0} tareas totales · <span>{activeProject.tasks?.filter(t => t.status === 'done').length || 0} completadas</span>
-                      </div>
-                      <div className="pp-overall-bar">
-                        <div className="pp-bar-row">
-                          <span className="pp-bar-label">Avance general del proyecto</span>
-                          <span className="pp-bar-pct">{activeProject.progress}%</span>
-                        </div>
-                        <div className="pp-bar-track">
-                          <div className="pp-bar-fill" style={{ width: `${activeProject.progress}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                    <ProgressRing pct={activeProject.progress} size={72} stroke={6} />
+              {/* ── Cabecera del proyecto ── */}
+              <div className="pp-proj-header">
+                <div className="pp-proj-name">{activeProject.name}</div>
+                <div className="pp-proj-meta">
+                  <b>{ms.length}</b> objetivo{ms.length !== 1 ? 's' : ''} · <b>{activeProject.tasks?.length || 0}</b> tareas totales
+                </div>
+                <div className="pp-bar-row">
+                  <span className="pp-bar-label">Avance general del proyecto</span>
+                  <span className="pp-bar-pct">
+                    {activeProject.progress}
+                    {activeProject.inProgressPct > 0 && (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+                        {' '}+{activeProject.inProgressPct}% en curso
+                      </span>
+                    )}%
+                  </span>
+                </div>
+                <ComboBar pct={activeProject.progress} inProgressPct={activeProject.inProgressPct} height={8} />
+                <div className="pp-bar-legend">
+                  <div className="pp-bar-legend-item">
+                    <div className="pp-legend-dot" style={{ background: 'var(--blue-primary)' }} />
+                    Completado
                   </div>
+                  <div className="pp-bar-legend-item">
+                    <div className="pp-legend-dot" style={{ background: 'var(--blue-primary)', opacity: 0.3 }} />
+                    En progreso
+                  </div>
+                </div>
+              </div>
 
-                  {/* Milestones */}
-                  {ms.length === 0 ? (
-                    <div className="pp-empty">No hay objetivos configurados en este proyecto.</div>
+              {/* ── Objetivos horizontales ── */}
+              <div className="pp-ms-section">
+                <div className="pp-ms-section-title">Objetivos del proyecto</div>
+                <div className="pp-ms-scroll">
+                  {ms.map(milestone => {
+                    const isActive = activeMilestone?.id === milestone.id;
+                    const done = milestone.tasks.filter(t => t.status === 'done').length;
+                    const inProg = milestone.tasks.filter(t => t.status === 'in-progress').length;
+                    return (
+                      <div key={milestone.id}
+                        className={`pp-ms-card ${isActive ? 'active' : ''}`}
+                        onClick={() => { setActiveMilestone(milestone); setOpenTasks({}); }}>
+                        <div className="pp-ms-card-name">{milestone.name}</div>
+                        <div className="pp-ms-pct-row">
+                          <div>
+                            <div className="pp-ms-pct-num">{milestone.progress}%</div>
+                            <div className="pp-ms-pct-sub">
+                              {done}/{milestone.tasks.length} completadas
+                              {inProg > 0 && ` · ${inProg} en curso`}
+                            </div>
+                          </div>
+                        </div>
+                        <ComboBar pct={milestone.progress} inProgressPct={milestone.inProgressPct} height={5} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Tareas del milestone activo ── */}
+              {activeMilestone && (
+                <>
+                  <div className="pp-task-section-title">
+                    Tareas — {activeMilestone.name}
+                  </div>
+                  {tasks.length === 0 ? (
+                    <div className="pp-empty">No hay tareas en este objetivo.</div>
                   ) : (
-                    <>
-                      <div className="pp-ms-title">Objetivos del proyecto</div>
-                      {ms.map(milestone => {
-                        const isOpen = openMilestones[milestone.id];
-                        const done = milestone.tasks.filter(t => t.status === 'done').length;
+                    <div className="pp-task-list">
+                      {tasks.map(task => {
+                        const st = STATUS_CFG[task.status] || STATUS_CFG.pending;
+                        const hasSub = task.subtasks?.length > 0;
+                        const isOpen = openTasks[task.id];
                         return (
-                          <div key={milestone.id} className="pp-ms">
-                            {/* Header del milestone */}
-                            <div className="pp-ms-header" onClick={() => toggleMilestone(milestone.id)}>
-                              <ProgressRing pct={milestone.progress} size={48} stroke={4} />
-                              <div className="pp-ms-info">
-                                <div className="pp-ms-name">{milestone.name}</div>
-                                <div className="pp-ms-count">
-                                  <b>{done}</b> de {milestone.tasks.length} tareas completadas
+                          <div key={task.id} className="pp-task-card">
+                            <div className="pp-task-row" onClick={() => hasSub && toggleTask(task.id)}>
+                              <div className="pp-task-dot" style={{ background: st.dot }} />
+                              <div className="pp-task-body">
+                                <div className={`pp-task-title ${task.status === 'done' ? 'done' : ''}`}>
+                                  {task.title}
+                                </div>
+                                <div className="pp-task-meta">
+                                  <span className="pp-task-chip" style={{ color: st.chip.color, background: st.chip.bg }}>
+                                    {st.label}
+                                  </span>
+                                  {task.deadline && (
+                                    <span className="pp-task-date">📅 {fmtDate(task.deadline)}</span>
+                                  )}
+                                  {task.assignees?.length > 0 && (
+                                    <div className="pp-task-assignees">
+                                      {task.assignees.slice(0, 3).map(a => <Avatar key={a} name={a} />)}
+                                      <span className="pp-task-assignee-name">
+                                        {task.assignees[0]}{task.assignees.length > 1 ? ` +${task.assignees.length - 1}` : ''}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                              <span className={`pp-ms-chevron ${isOpen ? 'open' : ''}`}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="9 18 15 12 9 6"/>
-                                </svg>
-                              </span>
+                              {hasSub && (
+                                <div className={`pp-task-chevron ${isOpen ? 'open' : ''}`}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="9 18 15 12 9 6"/>
+                                  </svg>
+                                </div>
+                              )}
                             </div>
 
-                            {/* Tareas del milestone */}
-                            {isOpen && (
-                              <div className="pp-task-list">
-                                {milestone.tasks.map(task => {
-                                  const st = STATUS_CFG[task.status] || STATUS_CFG.pending;
-                                  const hasSub = task.subtasks?.length > 0;
-                                  const taskOpen = openTasks[task.id];
+                            {/* Subtareas */}
+                            {hasSub && isOpen && (
+                              <div className="pp-subtasks">
+                                {task.subtasks.map(sub => {
+                                  const sst = STATUS_CFG[sub.status] || STATUS_CFG.pending;
                                   return (
-                                    <div key={task.id} className="pp-task">
-                                      <div className="pp-task-row" onClick={() => hasSub && toggleTask(task.id)}>
-                                        <div className="pp-task-dot" style={{ background: st.dot }} />
-                                        <span className={`pp-task-text ${task.status === 'done' ? 'done' : ''}`}>
-                                          {task.title}
-                                        </span>
-                                        <div className="pp-task-right">
-                                          {task.deadline && (
-                                            <span className="pp-task-date">
-                                              {fmtDate(task.deadline)}
-                                            </span>
-                                          )}
-                                          <span className="pp-task-chip" style={{ color: st.color, background: st.bg }}>
-                                            {st.label}
+                                    <div key={sub.id} className="pp-subtask-row">
+                                      <div className="pp-sub-dot" style={{ background: sst.dot }} />
+                                      <div className="pp-sub-body">
+                                        <div className={`pp-sub-title ${sub.status === 'done' ? 'done' : ''}`}>
+                                          {sub.title}
+                                        </div>
+                                        <div className="pp-sub-meta">
+                                          <span className="pp-task-chip" style={{ color: sst.chip.color, background: sst.chip.bg, padding: '1px 7px', fontSize: 10 }}>
+                                            {sst.label}
                                           </span>
-                                          {hasSub && (
-                                            <span className={`pp-task-chevron ${taskOpen ? 'open' : ''}`}>
-                                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <polyline points="9 18 15 12 9 6"/>
-                                              </svg>
-                                            </span>
+                                          {sub.assignees?.length > 0 && (
+                                            <div className="pp-task-assignees">
+                                              {sub.assignees.slice(0, 2).map(a => <Avatar key={a} name={a} />)}
+                                              <span className="pp-task-assignee-name">{sub.assignees[0]}</span>
+                                            </div>
                                           )}
                                         </div>
                                       </div>
-                                      {hasSub && taskOpen && (
-                                        <div className="pp-subtasks">
-                                          {task.subtasks.map(s => {
-                                            const sc = STATUS_CFG[s.status] || STATUS_CFG.pending;
-                                            return (
-                                              <div key={s.id} className="pp-sub">
-                                                <span className="pp-sub-dot" style={{ background: sc.dot }} />
-                                                <span className={`pp-sub-text ${s.status === 'done' ? 'done' : ''}`}>{s.title}</span>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
                                     </div>
                                   );
                                 })}
@@ -354,13 +412,9 @@ export default function PortalPage() {
                           </div>
                         );
                       })}
-                    </>
+                    </div>
                   )}
                 </>
-              )}
-
-              {!activeProject && !loading && (
-                <div className="pp-empty">No se encontraron proyectos en tu cuenta.</div>
               )}
             </>
           )}
