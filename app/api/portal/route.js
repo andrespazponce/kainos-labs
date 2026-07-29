@@ -1,18 +1,21 @@
 // app/api/portal/route.js
-// Igual que el de Antonio pero agrega milestone_id al query de tareas.
-// Agrupa las tareas por milestone antes de devolverlas al cliente.
+// Usa getToken() para leer odooSessionId directamente del JWT,
+// ya que Antonio intencionalmente NO lo copia a la session
+// (para no exponerlo al navegador vía /api/auth/session).
 
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
 
 const ODOO_URL = process.env.ODOO_URL;
 const ODOO_DB  = process.env.ODOO_DB;
 
-async function odooCall(session_id, model, method, args, kwargs = {}) {
+async function odooCall(sessionId, model, method, args, kwargs = {}) {
   const res = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: `session_id=${session_id}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `session_id=${sessionId}`,
+    },
     body: JSON.stringify({
       jsonrpc: '2.0', method: 'call', id: 1,
       params: { model, method, args, kwargs },
@@ -23,23 +26,25 @@ async function odooCall(session_id, model, method, args, kwargs = {}) {
   return json.result;
 }
 
-function parseStatus(odooStage) {
-  if (!odooStage) return 'pending';
-  const s = (typeof odooStage === 'string' ? odooStage : odooStage[1] || '').toLowerCase();
+function parseStatus(stageId) {
+  if (!stageId) return 'pending';
+  const s = (Array.isArray(stageId) ? stageId[1] : stageId).toString().toLowerCase();
   if (s.includes('done') || s.includes('complet') || s.includes('cerrad')) return 'done';
   if (s.includes('progress') || s.includes('proceso') || s.includes('curso')) return 'in-progress';
   return 'pending';
 }
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.odooSessionId) {
+export async function GET(request) {
+  // Leemos el JWT directamente — aquí sí está odooSessionId
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
+  if (!token || token.role !== 'client' || !token.odooSessionId) {
     return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
   }
 
-  try {
-    const sid = session.odooSessionId;
+  const sid = token.odooSessionId;
 
+  try {
     // Proyectos del usuario autenticado
     const projects = await odooCall(sid, 'project.project', 'search_read',
       [[['privacy_visibility', '!=', 'followers']]],
@@ -47,7 +52,7 @@ export async function GET() {
     );
 
     const result = await Promise.all(projects.map(async (proj) => {
-      // Tareas — agregamos milestone_id a los fields
+      // Tareas principales con milestone_id incluido
       const rawTasks = await odooCall(sid, 'project.task', 'search_read',
         [[['project_id', '=', proj.id], ['parent_id', '=', false]]],
         {
@@ -58,7 +63,7 @@ export async function GET() {
 
       // Subtareas
       const allChildIds = rawTasks.flatMap(t => t.child_ids || []);
-      let subtaskMap = {};
+      const subtaskMap = {};
       if (allChildIds.length > 0) {
         const rawSubs = await odooCall(sid, 'project.task', 'search_read',
           [[['id', 'in', allChildIds]]],
@@ -86,7 +91,7 @@ export async function GET() {
         subtasks: subtaskMap[t.id] || [],
       }));
 
-      // Progreso: tareas done / total
+      // Progreso global
       const done = tasks.filter(t => t.status === 'done').length;
       const progress = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
 
@@ -103,23 +108,24 @@ export async function GET() {
 
       const milestones = Object.values(milestoneMap).map(m => {
         const mDone  = m.tasks.filter(t => t.status === 'done').length;
-        const mTotal = m.tasks.length;
         return {
           ...m,
-          progress: mTotal > 0 ? Math.round((mDone / mTotal) * 100) : 0,
+          progress: m.tasks.length > 0 ? Math.round((mDone / m.tasks.length) * 100) : 0,
         };
       });
 
       return { id: proj.id, name: proj.name, progress, tasks, milestones };
     }));
 
-    // Nombre del usuario desde la sesión
-    const company = session.user?.name || session.user?.email || '';
+    return NextResponse.json({
+      company: token.company || token.name || '',
+      projects: result,
+    });
 
-    return NextResponse.json({ company, projects: result });
   } catch (err) {
     console.error('Portal API error:', err.message);
-    if (err.message?.includes('Session expired') || err.message?.includes('session')) {
+    const msg = err.message?.toLowerCase() || '';
+    if (msg.includes('session') || msg.includes('expired')) {
       return NextResponse.json({ error: 'SESSION_EXPIRED' }, { status: 401 });
     }
     return NextResponse.json({ error: 'ODOO_ERROR', detail: err.message }, { status: 500 });
