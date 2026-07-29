@@ -1,7 +1,3 @@
-// app/api/portal/route.js
-// Agrega user_ids (encargados) al query de tareas.
-// Devuelve milestone_id, encargados, y subtareas con sus encargados.
-
 import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
 
@@ -10,14 +6,8 @@ const ODOO_URL = process.env.ODOO_URL;
 async function odooCall(sessionId, model, method, args, kwargs = {}) {
   const res = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Cookie: `session_id=${sessionId}`,
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0', method: 'call', id: 1,
-      params: { model, method, args, kwargs },
-    }),
+    headers: { 'Content-Type': 'application/json', Cookie: `session_id=${sessionId}` },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'call', id: 1, params: { model, method, args, kwargs } }),
   });
   const json = await res.json();
   if (json.error) throw new Error(json.error.data?.message || json.error.message);
@@ -32,27 +22,20 @@ function parseStatus(stageId) {
   return 'pending';
 }
 
-// Calcula progreso de un conjunto de tareas.
-// done = 100% de su peso, in-progress = peso parcial (para visual),
-// pending = 0%.
-function calcProgress(tasks, totalTasks) {
-  if (totalTasks === 0) return { pct: 0, inProgressPct: 0 };
-  const weight = 100 / totalTasks;
-  const donePct = tasks.filter(t => t.status === 'done').length * weight;
-  const inProgressPct = tasks.filter(t => t.status === 'in-progress').length * weight;
+function calcProgress(tasks) {
+  if (!tasks.length) return { pct: 0, inProgressPct: 0 };
+  const w = 100 / tasks.length;
   return {
-    pct: Math.round(donePct),
-    inProgressPct: Math.round(inProgressPct), // visual only, no suma al total
+    pct: Math.round(tasks.filter(t => t.status === 'done').length * w),
+    inProgressPct: Math.round(tasks.filter(t => t.status === 'in-progress').length * w),
   };
 }
 
 export async function GET(request) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-
   if (!token || token.role !== 'client' || !token.odooSessionId) {
     return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
   }
-
   const sid = token.odooSessionId;
 
   try {
@@ -62,31 +45,36 @@ export async function GET(request) {
     );
 
     const result = await Promise.all(projects.map(async (proj) => {
-
-      // Tareas principales — incluimos user_ids para los encargados
+      // Tareas principales
       const rawTasks = await odooCall(sid, 'project.task', 'search_read',
         [[['project_id', '=', proj.id], ['parent_id', '=', false]]],
-        {
-          fields: ['id', 'name', 'stage_id', 'date_deadline', 'milestone_id', 'child_ids', 'user_ids'],
-          order: 'milestone_id asc, date_deadline asc',
-        }
+        { fields: ['id', 'name', 'stage_id', 'date_deadline', 'milestone_id', 'user_ids'], order: 'milestone_id asc, date_deadline asc' }
       );
 
-      // Subtareas con encargados
-      const allChildIds = rawTasks.flatMap(t => t.child_ids || []);
+      const taskIds = rawTasks.map(t => t.id);
+
+      // Nombres encargados de tareas principales
+      const mainUids = [...new Set(rawTasks.flatMap(t => t.user_ids || []))];
+      const mainUserMap = {};
+      if (mainUids.length) {
+        const users = await odooCall(sid, 'res.users', 'read', [mainUids, ['id', 'name']]);
+        users.forEach(u => { mainUserMap[u.id] = u.name; });
+      }
+
+      // Subtareas — buscar por parent_id directo, más confiable que child_ids
       const subtaskMap = {};
-      if (allChildIds.length > 0) {
+      if (taskIds.length) {
         const rawSubs = await odooCall(sid, 'project.task', 'search_read',
-          [[['id', 'in', allChildIds]]],
+          [[['parent_id', 'in', taskIds]]],
           { fields: ['id', 'name', 'stage_id', 'parent_id', 'user_ids'] }
         );
 
-        // Obtener nombres de usuarios de subtareas
-        const subUserIds = [...new Set(rawSubs.flatMap(s => s.user_ids || []))];
-        let subUserMap = {};
-        if (subUserIds.length > 0) {
+        // Nombres encargados de subtareas
+        const subUids = [...new Set(rawSubs.flatMap(s => s.user_ids || []))];
+        const subUserMap = { ...mainUserMap };
+        if (subUids.filter(id => !subUserMap[id]).length) {
           const subUsers = await odooCall(sid, 'res.users', 'read',
-            [subUserIds, ['id', 'name']]
+            [subUids.filter(id => !subUserMap[id]), ['id', 'name']]
           );
           subUsers.forEach(u => { subUserMap[u.id] = u.name; });
         }
@@ -103,17 +91,7 @@ export async function GET(request) {
         });
       }
 
-      // Nombres de encargados de tareas principales
-      const mainUserIds = [...new Set(rawTasks.flatMap(t => t.user_ids || []))];
-      let mainUserMap = {};
-      if (mainUserIds.length > 0) {
-        const mainUsers = await odooCall(sid, 'res.users', 'read',
-          [mainUserIds, ['id', 'name']]
-        );
-        mainUsers.forEach(u => { mainUserMap[u.id] = u.name; });
-      }
-
-      // Construir tareas
+      // Construir tareas con subtareas
       const tasks = rawTasks.map(t => ({
         id: t.id,
         title: t.name,
@@ -126,50 +104,31 @@ export async function GET(request) {
       }));
 
       // Agrupar por milestone
-      const milestoneMap = {};
+      const msMap = {};
       tasks.forEach(task => {
         const key   = task.milestone_id   ?? 'sin-milestone';
         const label = task.milestone_name ?? 'Sin objetivo asignado';
-        if (!milestoneMap[key]) {
-          milestoneMap[key] = { id: key, name: label, tasks: [] };
-        }
-        milestoneMap[key].tasks.push(task);
+        if (!msMap[key]) msMap[key] = { id: key, name: label, tasks: [] };
+        msMap[key].tasks.push(task);
       });
 
-      // Calcular progreso por milestone
-      const milestones = Object.values(milestoneMap).map(m => {
-        const { pct, inProgressPct } = calcProgress(m.tasks, m.tasks.length);
+      const milestones = Object.values(msMap).map(m => {
+        const { pct, inProgressPct } = calcProgress(m.tasks);
         return { ...m, progress: pct, inProgressPct };
       });
 
-      // Progreso general = promedio de los porcentajes de cada milestone
-      const totalMilestones = milestones.length;
-      const overallPct = totalMilestones > 0
-        ? Math.round(milestones.reduce((acc, m) => acc + m.progress, 0) / totalMilestones)
-        : 0;
-      const overallInProgress = totalMilestones > 0
-        ? Math.round(milestones.reduce((acc, m) => acc + m.inProgressPct, 0) / totalMilestones)
-        : 0;
+      const totalMs = milestones.length;
+      const overallPct      = totalMs ? Math.round(milestones.reduce((a, m) => a + m.progress, 0) / totalMs) : 0;
+      const overallInProgress = totalMs ? Math.round(milestones.reduce((a, m) => a + m.inProgressPct, 0) / totalMs) : 0;
 
-      return {
-        id: proj.id,
-        name: proj.name,
-        progress: overallPct,
-        inProgressPct: overallInProgress,
-        tasks,
-        milestones,
-      };
+      return { id: proj.id, name: proj.name, progress: overallPct, inProgressPct: overallInProgress, tasks, milestones };
     }));
 
-    return NextResponse.json({
-      company: token.company || token.name || '',
-      projects: result,
-    });
+    return NextResponse.json({ company: token.company || token.name || '', projects: result });
 
   } catch (err) {
-    console.error('Portal API error:', err.message);
-    const msg = err.message?.toLowerCase() || '';
-    if (msg.includes('session') || msg.includes('expired')) {
+    console.error('Portal error:', err.message);
+    if (err.message?.toLowerCase().includes('session')) {
       return NextResponse.json({ error: 'SESSION_EXPIRED' }, { status: 401 });
     }
     return NextResponse.json({ error: 'ODOO_ERROR', detail: err.message }, { status: 500 });

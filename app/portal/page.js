@@ -328,7 +328,7 @@ export default function PortalPage() {
                                           {st.label}
                                         </span>
                                         {task.deadline && (
-                                          <span className="pp-task-date">📅 {fmtDate(task.deadline)}</span>
+                                          <span className="pp-task-date">{fmtDate(task.deadline)}</span>
                                         )}
                                         {task.assignees?.length > 0 && (
                                           <div className="pp-task-assignees">
