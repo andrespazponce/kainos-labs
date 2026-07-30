@@ -1,18 +1,7 @@
+// app/api/portal/route.js
 import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
-
-const ODOO_URL = process.env.ODOO_URL;
-
-async function odooCall(sessionId, model, method, args, kwargs = {}) {
-  const res = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: `session_id=${sessionId}` },
-    body: JSON.stringify({ jsonrpc: '2.0', method: 'call', id: 1, params: { model, method, args, kwargs } }),
-  });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.data?.message || json.error.message);
-  return json.result;
-}
+import { odooCallKw } from '@/lib/odoo';
 
 function parseStatus(stageId) {
   if (!stageId) return 'pending';
@@ -39,44 +28,51 @@ export async function GET(request) {
   const sid = token.odooSessionId;
 
   try {
-    const projects = await odooCall(sid, 'project.project', 'search_read',
+    const projects = await odooCallKw(sid, 'project.project', 'search_read',
       [[['privacy_visibility', '!=', 'followers']]],
       { fields: ['id', 'name'], limit: 20 }
     );
 
     const result = await Promise.all(projects.map(async (proj) => {
-      // Tareas principales
-      const rawTasks = await odooCall(sid, 'project.task', 'search_read',
+      // Tareas principales — incluye description, user_id (responsable), user_ids (todos)
+      const rawTasks = await odooCallKw(sid, 'project.task', 'search_read',
         [[['project_id', '=', proj.id], ['parent_id', '=', false]]],
-        { fields: ['id', 'name', 'stage_id', 'date_deadline', 'milestone_id', 'user_ids'], order: 'milestone_id asc, date_deadline asc' }
+        {
+          fields: ['id', 'name', 'stage_id', 'date_deadline', 'milestone_id',
+                   'user_id', 'user_ids', 'description'],
+          order: 'milestone_id asc, date_deadline asc',
+        }
       );
 
       const taskIds = rawTasks.map(t => t.id);
 
-      // Nombres encargados de tareas principales
-      const mainUids = [...new Set(rawTasks.flatMap(t => t.user_ids || []))];
-      const mainUserMap = {};
-      if (mainUids.length) {
-        const users = await odooCall(sid, 'res.users', 'read', [mainUids, ['id', 'name']]);
-        users.forEach(u => { mainUserMap[u.id] = u.name; });
+      // Resolver nombres de usuarios (responsable + asignados)
+      const allUids = [...new Set(rawTasks.flatMap(t => [
+        ...(Array.isArray(t.user_id) ? [t.user_id[0]] : t.user_id ? [t.user_id] : []),
+        ...(t.user_ids || []),
+      ]))];
+      const userMap = {};
+      if (allUids.length) {
+        const users = await odooCallKw(sid, 'res.users', 'read', [allUids, ['id', 'name']]);
+        users.forEach(u => { userMap[u.id] = u.name; });
       }
 
-      // Subtareas — buscar por parent_id directo, más confiable que child_ids
+      // Subtareas — busca por parent_id in [taskIds]
       const subtaskMap = {};
       if (taskIds.length) {
-        const rawSubs = await odooCall(sid, 'project.task', 'search_read',
+        const rawSubs = await odooCallKw(sid, 'project.task', 'search_read',
           [[['parent_id', 'in', taskIds]]],
-          { fields: ['id', 'name', 'stage_id', 'parent_id', 'user_ids'] }
+          { fields: ['id', 'name', 'stage_id', 'parent_id', 'user_id', 'user_ids', 'description'] }
         );
 
-        // Nombres encargados de subtareas
-        const subUids = [...new Set(rawSubs.flatMap(s => s.user_ids || []))];
-        const subUserMap = { ...mainUserMap };
-        if (subUids.filter(id => !subUserMap[id]).length) {
-          const subUsers = await odooCall(sid, 'res.users', 'read',
-            [subUids.filter(id => !subUserMap[id]), ['id', 'name']]
-          );
-          subUsers.forEach(u => { subUserMap[u.id] = u.name; });
+        // Resolver nombres adicionales que no estaban en tareas principales
+        const subUids = [...new Set(rawSubs.flatMap(s => [
+          ...(Array.isArray(s.user_id) ? [s.user_id[0]] : s.user_id ? [s.user_id] : []),
+          ...(s.user_ids || []),
+        ]))].filter(id => !userMap[id]);
+        if (subUids.length) {
+          const subUsers = await odooCallKw(sid, 'res.users', 'read', [subUids, ['id', 'name']]);
+          subUsers.forEach(u => { userMap[u.id] = u.name; });
         }
 
         rawSubs.forEach(s => {
@@ -86,22 +82,29 @@ export async function GET(request) {
             id: s.id,
             title: s.name,
             status: parseStatus(s.stage_id),
-            assignees: (s.user_ids || []).map(uid => subUserMap[uid] || `Usuario ${uid}`),
+            description: s.description || null,
+            owner: Array.isArray(s.user_id) ? userMap[s.user_id[0]] || null : s.user_id ? userMap[s.user_id] || null : null,
+            assignees: (s.user_ids || []).map(uid => ({ id: uid, name: userMap[uid] || `Usuario ${uid}` })),
           });
         });
       }
 
-      // Construir tareas con subtareas
-      const tasks = rawTasks.map(t => ({
-        id: t.id,
-        title: t.name,
-        status: parseStatus(t.stage_id),
-        deadline: t.date_deadline || null,
-        milestone_id:   Array.isArray(t.milestone_id) ? t.milestone_id[0] : null,
-        milestone_name: Array.isArray(t.milestone_id) ? t.milestone_id[1] : null,
-        assignees: (t.user_ids || []).map(uid => mainUserMap[uid] || `Usuario ${uid}`),
-        subtasks: subtaskMap[t.id] || [],
-      }));
+      // Construir tareas
+      const tasks = rawTasks.map(t => {
+        const ownerId = Array.isArray(t.user_id) ? t.user_id[0] : t.user_id || null;
+        return {
+          id: t.id,
+          title: t.name,
+          status: parseStatus(t.stage_id),
+          deadline: t.date_deadline || null,
+          description: t.description || null,
+          milestone_id:   Array.isArray(t.milestone_id) ? t.milestone_id[0] : null,
+          milestone_name: Array.isArray(t.milestone_id) ? t.milestone_id[1] : null,
+          owner: ownerId ? userMap[ownerId] || null : null,
+          assignees: (t.user_ids || []).map(uid => ({ id: uid, name: userMap[uid] || `Usuario ${uid}` })),
+          subtasks: subtaskMap[t.id] || [],
+        };
+      });
 
       // Agrupar por milestone
       const msMap = {};
@@ -118,10 +121,19 @@ export async function GET(request) {
       });
 
       const totalMs = milestones.length;
-      const overallPct      = totalMs ? Math.round(milestones.reduce((a, m) => a + m.progress, 0) / totalMs) : 0;
+      const overallPct        = totalMs ? Math.round(milestones.reduce((a, m) => a + m.progress, 0) / totalMs) : 0;
       const overallInProgress = totalMs ? Math.round(milestones.reduce((a, m) => a + m.inProgressPct, 0) / totalMs) : 0;
 
-      return { id: proj.id, name: proj.name, progress: overallPct, inProgressPct: overallInProgress, tasks, milestones };
+      // Lista plana de encargados únicos del proyecto (para filtros)
+      const allAssignees = [...new Map(
+        tasks.flatMap(t => [
+          ...(t.owner ? [{ id: `owner-${t.owner}`, name: t.owner }] : []),
+          ...t.assignees,
+          ...t.subtasks.flatMap(s => [...(s.owner ? [{ id: `owner-${s.owner}`, name: s.owner }] : []), ...s.assignees]),
+        ]).map(a => [a.name, a])
+      ).values()];
+
+      return { id: proj.id, name: proj.name, progress: overallPct, inProgressPct: overallInProgress, tasks, milestones, assignees: allAssignees };
     }));
 
     return NextResponse.json({ company: token.company || token.name || '', projects: result });
