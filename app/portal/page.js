@@ -5,7 +5,7 @@
 // - Solo subtareas son expandibles
 
 import { useState, useEffect } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 const STATUS_CFG = {
@@ -58,7 +58,7 @@ function ComboBar({ pct, inProgressPct, height = 6 }) {
 }
 
 export default function PortalPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -107,23 +107,10 @@ export default function PortalPage() {
       <style>{`
         .pp { min-height:100vh; background:var(--bg-primary); display:flex; flex-direction:column; }
 
-        /* Topbar */
-        .pp-top {
-          position:sticky; top:0; z-index:50;
-          display:flex; align-items:center; justify-content:space-between;
-          padding:14px 32px;
-          background:rgba(15,16,20,0.92); backdrop-filter:blur(16px);
-          border-bottom:1px solid var(--border-subtle);
-        }
-        .pp-brand { font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text-primary); text-decoration:none; }
-        .pp-brand span { color:var(--blue-primary); }
-        .pp-top-right { display:flex; align-items:center; gap:14px; }
-        .pp-user { font-size:13px; color:var(--text-secondary); }
-        .pp-logout { padding:6px 14px; background:transparent; border:1px solid var(--border-card); border-radius:8px; color:var(--text-secondary); font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s; }
-        .pp-logout:hover { border-color:var(--blue-border); color:var(--text-primary); }
-
-        /* Body — ancho completo con padding generoso */
-        .pp-body { flex:1; width:100%; padding:32px 40px 80px; box-sizing:border-box; }
+        /* Body — ancho completo con padding generoso. El padding-top deja
+           lugar al Navbar compartido (fixed), que ya trae el dropdown de
+           usuario con "Cerrar sesión" — este page ya no tiene topbar propia. */
+        .pp-body { flex:1; width:100%; padding:120px 40px 80px; box-sizing:border-box; }
 
         /* Selector de proyecto */
         .pp-proj-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
@@ -209,24 +196,12 @@ export default function PortalPage() {
         .pp-error { text-align:center; padding:40px 0; color:#ef4444; font-size:13px; }
 
         @media (max-width:768px) {
-          .pp-body { padding:20px 16px 60px; }
-          .pp-top { padding:12px 16px; }
+          .pp-body { padding:100px 16px 60px; }
           .pp-ms-grid { grid-template-columns:1fr; }
         }
       `}</style>
 
       <div className="pp">
-        {/* Topbar */}
-        <div className="pp-top">
-          <a href="/" className="pp-brand">Saga<span>Soft</span></a>
-          <div className="pp-top-right">
-            <span className="pp-user">{session.user?.name || session.user?.email}</span>
-            <button className="pp-logout" onClick={() => signOut({ callbackUrl: '/' })}>
-              Cerrar sesión
-            </button>
-          </div>
-        </div>
-
         <div className="pp-body">
           {loading && <div className="pp-empty">Cargando desde ODOO...</div>}
           {error   && <div className="pp-error">Error: {error}</div>}
